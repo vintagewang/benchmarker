@@ -1,10 +1,10 @@
-#include "simple_socket.h"
 #include <assert.h>
 #include <limits.h>
 #include <string.h>
+#include <string>
+
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <sys/ioctl.h>
@@ -14,8 +14,46 @@
 #include <sys/time.h>
 #include <unistd.h>
 
-namespace SimpleSocket
+namespace SimpleUtil
 {
+	void CloseSocket(int fd)
+	{
+		if(fd >= 0) {
+			shutdown(fd, SHUT_RDWR);
+			close(fd);
+		}
+	}
+
+	bool HostName2Value(const char* fromhost, std::string& tohost)
+	{
+		assert(NULL != fromhost);
+
+		bool result = (INADDR_NONE == inet_addr(fromhost));
+
+		// 如果传入的是域名
+		if(result) {
+			struct hostent* host_entry = gethostbyname(fromhost);
+			result = (host_entry != NULL);
+			if(result) {
+				char buf[64] = {0};
+				sprintf(buf, "%d.%d.%d.%d",
+				        (host_entry->h_addr_list[0][0] & 0x00ff),
+				        (host_entry->h_addr_list[0][1] & 0x00ff),
+				        (host_entry->h_addr_list[0][2] & 0x00ff),
+				        (host_entry->h_addr_list[0][3] & 0x00ff));
+
+				tohost = buf;
+			}
+		}
+		// 如果传入的是IP地址
+		else {
+			result = true;
+			tohost = fromhost;
+		}
+
+		return result;
+	}
+
 	int ConnectRemoteHost(const char* host, int port)
 	{
 		assert(host != NULL);
@@ -32,6 +70,12 @@ namespace SimpleSocket
 
 		optvalue = 1;
 		bRetResult = bRetResult && (-1 != setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &optvalue, (int)sizeof(optvalue)));
+
+		optvalue = 1024 * 64;
+		bRetResult = bRetResult && (-1 != setsockopt(fd, IPPROTO_TCP, SO_SNDBUF, &optvalue, (int)sizeof(optvalue)));
+
+		optvalue = 1024 * 64;
+		bRetResult = bRetResult && (-1 != setsockopt(fd, IPPROTO_TCP, SO_RCVBUF, &optvalue, (int)sizeof(optvalue)));
 
 		// 尝试域名解析
 		std::string hostNew;
@@ -66,11 +110,7 @@ namespace SimpleSocket
 		return -1;
 	}
 
-
-
-
-
-	bool Socket::SplitAddr(const char* addr, std::string& host, int& min_port, int& max_port)
+	bool SplitAddr(const char* addr, std::string& host, int& min_port, int& max_port)
 	{
 		assert(addr != NULL);
 
@@ -114,42 +154,10 @@ namespace SimpleSocket
 
 		return bResult && (max_port >= min_port) && (min_port >= 0);
 	}
+}
 
-	void CloseSocket(int fd)
-	{
-		if(fd >= 0) {
-			shutdown(fd, SHUT_RDWR);
-			close(fd);
-		}
-	}
+int main(int argc, char** argv)
+{
 
-	bool HostName2Value(const char* fromhost, std::string& tohost)
-	{
-		assert(NULL != fromhost);
-
-		bool result = (INADDR_NONE == inet_addr(fromhost));
-
-		// 如果传入的是域名
-		if(result) {
-			struct hostent* host_entry = gethostbyname(fromhost);
-			result = (host_entry != NULL);
-			if(result) {
-				char buf[64] = {0};
-				sprintf(buf, "%d.%d.%d.%d",
-				        (host_entry->h_addr_list[0][0] & 0x00ff),
-				        (host_entry->h_addr_list[0][1] & 0x00ff),
-				        (host_entry->h_addr_list[0][2] & 0x00ff),
-				        (host_entry->h_addr_list[0][3] & 0x00ff));
-
-				tohost = buf;
-			}
-		}
-		// 如果传入的是IP地址
-		else {
-			result = true;
-			tohost = fromhost;
-		}
-
-		return result;
-	}
-};
+	return 0;
+}
