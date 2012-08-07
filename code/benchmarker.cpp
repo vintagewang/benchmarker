@@ -13,6 +13,7 @@
 #include <sys/select.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 namespace SimpleUtil
 {
@@ -118,6 +119,9 @@ namespace SimpleUtil
 		if(!bRetResult && -1 != fd) {
 			CloseSocket(fd);
 			fd = -1;
+		} else {
+			int flg = fcntl(fd, F_GETFL, 0);
+			fcntl(fd, F_SETFL, flg | O_NONBLOCK);
 		}
 
 		return fd;
@@ -136,11 +140,167 @@ namespace SimpleUtil
 
 		return -1;
 	}
+
+	int SocketStateChanged(int fd, int timeout)
+	{
+		fd_set fdsRead;
+		fd_set fdsWrite;
+		struct timeval tv = {0};
+
+		FD_ZERO(&fdsRead);
+		FD_ZERO(&fdsWrite);
+		FD_SET(fd, &fdsRead);
+		FD_SET(fd, &fdsWrite);
+
+		tv.tv_sec = 10;
+		tv.tv_usec = 0;
+
+		struct timeval *ptv = &tv;
+
+		int retval = select(fd + 1, &fdsRead, &fdsWrite, NULL, ptv);
+		// select error
+		if(retval == -1) {
+			printf("select error\n");
+			return -1;
+		}
+		// socket timeout
+		else if(retval == 0) {
+			printf("select timeout\n");
+			return 0;
+		} else {
+			int returnValue = 0;
+
+			if(FD_ISSET(fd, &fdsRead)) {
+				returnValue |= 1;
+			}
+
+			if(FD_ISSET(fd, &fdsWrite)) {
+				returnValue |= 2;
+			}
+
+			return returnValue;
+		}
+
+		return -1;
+	}
+
+	bool ClearSocket(int fd)
+	{
+		static char buf[1024 * 64];
+		for(int i = 0; i < 3; i++) {
+			int len = read(fd, buf, sizeof(buf));
+			if(len == -1) {
+				//printf("server reset connection\n");
+				//return false;
+			} else if(len == 0) {
+				break;
+			}
+		}
+
+		return true;
+	}
+}
+
+static const int MAX_MSG_HEADER_BUFFER_SIZE = 1024 * 1024;
+static char g_bufMsgHeader[MAX_MSG_HEADER_BUFFER_SIZE];
+
+static const int MAX_MSG_BODY_BUFFER_SIZE = 1024 * 1024;
+static char g_bufMsgBody[MAX_MSG_BODY_BUFFER_SIZE];
+
+int buildMessageHeader(const char* topic, int maxPartition, int msgBodySize)
+{
+	static unsigned int opaque = 0;
+	static unsigned int partition = 0;
+
+	int len = sprintf(g_bufMsgHeader, "put %s %u %d %d %u\r\n"
+	                  , topic
+	                  , partition++ % maxPartition
+	                  , msgBodySize
+	                  , 0
+	                  , opaque++);
+	printf("[%s][%d]\n", g_bufMsgHeader, len);
+
+	return len;
+}
+
+void sendMessageAlways(int fd, const char* topic, int maxPartition, int msgBodySize)
+{
+SENDMESSAGEALWAYS_AGAIN:
+	int msgHeaderLength = buildMessageHeader(topic, maxPartition, msgBodySize);
+	int writeHeaderLength = 0;
+	int writeBodyLength = 0;
+
+SENDMESSAGEALWAYS_SELECT:
+	int socketState = SimpleUtil::SocketStateChanged(fd, 10);
+	if(socketState == -1) {
+		return;
+	} else if(socketState == 0) {
+
+	} else {
+		// read
+		if((socketState & 1) == 1) {
+			bool clearResult = SimpleUtil::ClearSocket(fd);
+			if(!clearResult) return;
+		}
+
+		// write
+		if((socketState & 2) == 2) {
+SENDMESSAGEALWAYS_WRITE:
+			if(writeHeaderLength < msgHeaderLength) {
+				int len = write(fd, g_bufMsgHeader + writeHeaderLength, msgHeaderLength - writeHeaderLength);
+				if(len > 0) {
+					writeHeaderLength += len;
+					goto SENDMESSAGEALWAYS_WRITE;
+				} else if(len == 0) {
+					goto SENDMESSAGEALWAYS_SELECT;
+				} else if(len == -1) {
+					printf("write error\n");
+					return;
+				}
+			} else if(writeBodyLength < msgBodySize) {
+				int len = write(fd, g_bufMsgBody + writeBodyLength, msgBodySize - writeBodyLength);
+				if(len >= 0) {
+					writeBodyLength += len;
+					goto SENDMESSAGEALWAYS_WRITE;
+				} else if(len == 0) {
+					goto SENDMESSAGEALWAYS_SELECT;
+				}  else if(len == -1) {
+					printf("write error\n");
+					return;
+				}
+			} else {
+				goto SENDMESSAGEALWAYS_AGAIN;
+			}
+		}
+
+
+	}
 }
 
 int main(int argc, char** argv)
 {
-	int fd = SimpleUtil::ConnectRemoteHost(argv[1]);
-	printf("ConnectRemoteHost %d\n", fd);
+	if(argc != 5) {
+		printf("%s serverUrl topic maxPartition msgBodySize\n", argv[0]);
+		return -1;
+	}
+
+	std::string serverUrl = argv[1];
+	std::string topic = argv[2];
+	int maxPartition = atoi(argv[3]);
+	int msgBodySize = atoi(argv[4]);
+
+	memset(g_bufMsgBody, 'H', MAX_MSG_BODY_BUFFER_SIZE);
+
+	while(true) {
+		int fd = SimpleUtil::ConnectRemoteHost(serverUrl.c_str());
+		if(-1 == fd) {
+			printf("ConnectRemoteHost failed\n");
+		}
+
+		sendMessageAlways(fd, topic.c_str(), maxPartition, msgBodySize);
+
+		SimpleUtil::CloseSocket(fd);
+		sleep(3);
+	}
 	return 0;
 }
