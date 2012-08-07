@@ -168,17 +168,17 @@ namespace SimpleUtil
 			printf("select timeout\n");
 			return 0;
 		} else {
-			int returnValue = 0;
+			int flg = 0;
 
 			if(FD_ISSET(fd, &fdsRead)) {
-				returnValue |= 1;
+				flg |= 1;
 			}
 
 			if(FD_ISSET(fd, &fdsWrite)) {
-				returnValue |= 2;
+				flg |= 2;
 			}
 
-			return returnValue;
+			return flg;
 		}
 
 		return -1;
@@ -218,7 +218,7 @@ int buildMessageHeader(const char* topic, int maxPartition, int msgBodySize)
 	                  , msgBodySize
 	                  , 0
 	                  , opaque++);
-	printf("[%s][%d]\n", g_bufMsgHeader, len);
+	//printf("[%s][%d]\n", g_bufMsgHeader, len);
 
 	return len;
 }
@@ -235,12 +235,11 @@ SENDMESSAGEALWAYS_SELECT:
 	if(socketState == -1) {
 		return;
 	} else if(socketState == 0) {
-
+		printf("never do this 0\n");
 	} else {
 		// read
 		if((socketState & 1) == 1) {
-			bool clearResult = SimpleUtil::ClearSocket(fd);
-			if(!clearResult) return;
+			SimpleUtil::ClearSocket(fd);
 		}
 
 		// write
@@ -259,7 +258,7 @@ SENDMESSAGEALWAYS_WRITE:
 				}
 			} else if(writeBodyLength < msgBodySize) {
 				int len = write(fd, g_bufMsgBody + writeBodyLength, msgBodySize - writeBodyLength);
-				if(len >= 0) {
+				if(len > 0) {
 					writeBodyLength += len;
 					goto SENDMESSAGEALWAYS_WRITE;
 				} else if(len == 0) {
@@ -271,9 +270,14 @@ SENDMESSAGEALWAYS_WRITE:
 			} else {
 				goto SENDMESSAGEALWAYS_AGAIN;
 			}
+
+			printf("never do this 1\n");
+		}
+		else {
+			goto SENDMESSAGEALWAYS_SELECT;
 		}
 
-
+		printf("never do this 2\n");
 	}
 }
 
@@ -298,6 +302,8 @@ int main(int argc, char** argv)
 		}
 
 		sendMessageAlways(fd, topic.c_str(), maxPartition, msgBodySize);
+
+		printf("sendMessageAlways over\n");
 
 		SimpleUtil::CloseSocket(fd);
 		sleep(3);
