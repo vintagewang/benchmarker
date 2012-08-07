@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 9.00
 # Visual Studio 2005
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "benchmarker", "benchmarker\benchmarker.vcproj", "{B51A67F8-E24D-48C4-A365-C44F68505E18}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "benchmarker", "benchmarker.vcproj", "{B51A67F8-E24D-48C4-A365-C44F68505E18}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

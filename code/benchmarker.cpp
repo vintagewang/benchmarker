@@ -235,7 +235,6 @@ SENDMESSAGEALWAYS_SELECT:
 	if(socketState == -1) {
 		return;
 	} else if(socketState == 0) {
-		printf("never do this 0\n");
 	} else {
 		// read
 		if((socketState & 1) == 1) {
