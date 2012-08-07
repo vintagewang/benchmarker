@@ -54,6 +54,34 @@ namespace SimpleUtil
 		return result;
 	}
 
+	bool SplitAddr(const char* addr, std::string& host, int& port)
+	{
+		assert(addr != NULL);
+
+		std::string strAddr = addr;
+		bool bResult = false;
+
+		if(strAddr == "0") {
+			host = "0.0.0.0";
+			port = 0;
+			bResult = true;
+		} else {
+			char buf[2][128];
+
+			memset(buf, 0, sizeof(buf));
+
+			// 先分割成HOST与PORT
+			int ret = sscanf(addr, "%[^ :]%*[ :]%[^$]", buf[0], buf[1]);
+			if(ret == 2) {
+				host = buf[0];
+				port = atoi(buf[1]);
+				bResult = true;
+			}
+		}
+
+		return bResult;
+	}
+
 	int ConnectRemoteHost(const char* host, int port)
 	{
 		assert(host != NULL);
@@ -72,10 +100,10 @@ namespace SimpleUtil
 		bRetResult = bRetResult && (-1 != setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &optvalue, (int)sizeof(optvalue)));
 
 		optvalue = 1024 * 64;
-		bRetResult = bRetResult && (-1 != setsockopt(fd, IPPROTO_TCP, SO_SNDBUF, &optvalue, (int)sizeof(optvalue)));
+		bRetResult = bRetResult && (-1 != setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &optvalue, (int)sizeof(optvalue)));
 
 		optvalue = 1024 * 64;
-		bRetResult = bRetResult && (-1 != setsockopt(fd, IPPROTO_TCP, SO_RCVBUF, &optvalue, (int)sizeof(optvalue)));
+		bRetResult = bRetResult && (-1 != setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &optvalue, (int)sizeof(optvalue)));
 
 		// 尝试域名解析
 		std::string hostNew;
@@ -99,65 +127,20 @@ namespace SimpleUtil
 	{
 		assert(NULL != addr);
 		std::string host;
-		int min_port = 0;
-		int max_port = 0;
+		int port = 0;
 
-		if(SplitAddr(addr, host, min_port, max_port)) {
+		if(SplitAddr(addr, host, port)) {
 			host = (host == "0.0.0.0") ? "127.0.0.1" : host;
-			return ConnectRemoteHost(host.c_str(), min_port);
+			return ConnectRemoteHost(host.c_str(), port);
 		}
 
 		return -1;
-	}
-
-	bool SplitAddr(const char* addr, std::string& host, int& min_port, int& max_port)
-	{
-		assert(addr != NULL);
-
-		std::string strAddr = addr;
-		bool bResult = false;
-
-		if(strAddr == "0") {
-			host = "0.0.0.0";
-			min_port = 0;
-			max_port = 0;
-			bResult = true;
-		} else {
-			char buf[4][128];
-
-			memset(buf, 0, sizeof(buf));
-
-			// 先分割成HOST与PORT
-			int ret = sscanf(addr, "%[^ :]%*[ :]%[^$]", buf[0], buf[1]);
-			if(ret == 2) {
-				host = buf[0];
-				bResult = true;
-
-				// 再分割MINPORT与MAXPORT
-				ret = sscanf(buf[1], "%[^ ~]%*[ ~]%[^$]", buf[2], buf[3]);
-				switch(ret) {
-				case 1:
-					min_port = atoi(buf[2]);
-					max_port = min_port;
-					bResult = true;
-					break;
-				case 2:
-					min_port = atoi(buf[2]);
-					max_port = atoi(buf[3]);
-					bResult = true;
-					break;
-				default:
-					break;
-				}
-			}
-		}
-
-		return bResult && (max_port >= min_port) && (min_port >= 0);
 	}
 }
 
 int main(int argc, char** argv)
 {
-
+	int fd = SimpleUtil::ConnectRemoteHost(argv[1]);
+	printf("ConnectRemoteHost %d\n", fd);
 	return 0;
 }
