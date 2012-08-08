@@ -271,7 +271,7 @@ int buildMessageHeader(const char* topic, int maxPartition, int msgBodySize)
 	return len;
 }
 
-void sendMessageAlways(int fd, const char* topic, int maxPartition, int msgBodySize, int dumyThreads)
+void sendMessageAlways(int fd, const char* topic, int maxPartition, int msgBodySize, int concurrentCount)
 {
 	long long requestTimes = 0;
 	long long responseTimes = 0;
@@ -284,7 +284,7 @@ SENDMESSAGEALWAYS_AGAIN:
 
 
 SENDMESSAGEALWAYS_SELECT:
-	bool selectWrite = (requestTimes - responseTimes) < dumyThreads;
+	bool selectWrite = (requestTimes - responseTimes) <= concurrentCount;
 	int socketState = SimpleUtil::SocketStateChanged(fd, 10, selectWrite);
 	if(socketState == -1) {
 		return;
@@ -347,7 +347,7 @@ SENDMESSAGEALWAYS_WRITE:
 int main(int argc, char** argv)
 {
 	if(argc != 6) {
-		printf("%s serverUrl topic maxPartition msgBodySize dumyThreads\n", argv[0]);
+		printf("%s serverUrl topic maxPartition msgBodySize concurrentCount\n", argv[0]);
 		return -1;
 	}
 
@@ -355,7 +355,7 @@ int main(int argc, char** argv)
 	std::string topic = argv[2];
 	int maxPartition = atoi(argv[3]);
 	int msgBodySize = atoi(argv[4]);
-	int dumyThreads = atoi(argv[5]);
+	int concurrentCount = atoi(argv[5]);
 
 	memset(g_bufMsgBody, 'H', MAX_MSG_BODY_BUFFER_SIZE);
 
@@ -365,7 +365,7 @@ int main(int argc, char** argv)
 			printf("ConnectRemoteHost failed\n");
 		}
 
-		sendMessageAlways(fd, topic.c_str(), maxPartition, msgBodySize, dumyThreads);
+		sendMessageAlways(fd, topic.c_str(), maxPartition, msgBodySize, concurrentCount);
 
 		printf("sendMessageAlways over\n");
 
