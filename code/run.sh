@@ -1,1 +1,1 @@
-./benchmarker 10.235.170.21:8123 TOPIC_VINTAGE 1024 4096
+./benchmarker 10.235.170.21:8123 taobao1 1024 4096 128
