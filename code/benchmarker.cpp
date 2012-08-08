@@ -365,7 +365,7 @@ int main(int argc, char** argv)
 			printf("ConnectRemoteHost failed\n");
 		}
 
-		sendMessageAlways(fd, topic.c_str(), maxPartition, msgBodySize);
+		sendMessageAlways(fd, topic.c_str(), maxPartition, msgBodySize, dumyThreads);
 
 		printf("sendMessageAlways over\n");
 
