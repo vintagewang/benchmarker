@@ -184,6 +184,51 @@ namespace SimpleUtil
 		return -1;
 	}
 
+	int SocketStateChanged(int fd, int timeout, bool selectWrite)
+	{
+		fd_set fdsRead;
+		fd_set fdsWrite;
+		struct timeval tv = {0};
+
+		FD_ZERO(&fdsRead);
+		FD_ZERO(&fdsWrite);
+		FD_SET(fd, &fdsRead);
+		FD_SET(fd, &fdsWrite);
+
+		tv.tv_sec = 10;
+		tv.tv_usec = 0;
+
+		struct timeval *ptv = &tv;
+
+		int retval = select(fd + 1, &fdsRead, selectWrite ? &fdsWrite : NULL, NULL, ptv);
+		// select error
+		if(retval == -1) {
+			printf("select error\n");
+			return -1;
+		}
+		// socket timeout
+		else if(retval == 0) {
+			printf("select timeout\n");
+			return 0;
+		} else {
+			int flg = 0;
+
+			if(FD_ISSET(fd, &fdsRead)) {
+				flg |= 1;
+			}
+
+			if(selectWrite) {
+				if(FD_ISSET(fd, &fdsWrite)) {
+					flg |= 2;
+				}
+			}
+
+			return flg;
+		}
+
+		return -1;
+	}
+
 	bool ClearSocket(int fd)
 	{
 		static char buf[1024 * 64];
@@ -194,6 +239,9 @@ namespace SimpleUtil
 				//return false;
 			} else if(len == 0) {
 				break;
+			} else {
+				buf[len] = 0;
+				printf("%s", buf);
 			}
 		}
 
@@ -223,22 +271,39 @@ int buildMessageHeader(const char* topic, int maxPartition, int msgBodySize)
 	return len;
 }
 
-void sendMessageAlways(int fd, const char* topic, int maxPartition, int msgBodySize)
+void sendMessageAlways(int fd, const char* topic, int maxPartition, int msgBodySize, int dumyThreads)
 {
+	long long requestTimes = 0;
+	long long responseTimes = 0;
 SENDMESSAGEALWAYS_AGAIN:
 	int msgHeaderLength = buildMessageHeader(topic, maxPartition, msgBodySize);
 	int writeHeaderLength = 0;
 	int writeBodyLength = 0;
 
+	requestTimes++;
+
+
 SENDMESSAGEALWAYS_SELECT:
-	int socketState = SimpleUtil::SocketStateChanged(fd, 10);
+	bool selectWrite = (requestTimes - responseTimes) < dumyThreads;
+	int socketState = SimpleUtil::SocketStateChanged(fd, 10, selectWrite);
 	if(socketState == -1) {
 		return;
 	} else if(socketState == 0) {
 	} else {
 		// read
 		if((socketState & 1) == 1) {
-			SimpleUtil::ClearSocket(fd);
+			static char bufRead[1024 * 64];
+			for(int i = 0; i < 3; i++) {
+				int len = read(fd, bufRead, sizeof(bufRead));
+				if(len == -1) {
+				} else if(len == 0) {
+					break;
+				} else {
+					for(int k = 0; k < len; k++) {
+						if(bufRead[k] == 'r') responseTimes ++;
+					}
+				}
+			}
 		}
 
 		// write
@@ -271,8 +336,7 @@ SENDMESSAGEALWAYS_WRITE:
 			}
 
 			printf("never do this 1\n");
-		}
-		else {
+		} else {
 			goto SENDMESSAGEALWAYS_SELECT;
 		}
 
@@ -282,8 +346,8 @@ SENDMESSAGEALWAYS_WRITE:
 
 int main(int argc, char** argv)
 {
-	if(argc != 5) {
-		printf("%s serverUrl topic maxPartition msgBodySize\n", argv[0]);
+	if(argc != 6) {
+		printf("%s serverUrl topic maxPartition msgBodySize dumyThreads\n", argv[0]);
 		return -1;
 	}
 
@@ -291,6 +355,7 @@ int main(int argc, char** argv)
 	std::string topic = argv[2];
 	int maxPartition = atoi(argv[3]);
 	int msgBodySize = atoi(argv[4]);
+	int dumyThreads = atoi(argv[5]);
 
 	memset(g_bufMsgBody, 'H', MAX_MSG_BODY_BUFFER_SIZE);
 
