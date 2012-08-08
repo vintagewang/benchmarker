@@ -14,6 +14,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <signal.h>
 
 namespace SimpleUtil
 {
@@ -249,39 +250,37 @@ namespace SimpleUtil
 	}
 }
 
-static const int MAX_MSG_HEADER_BUFFER_SIZE = 1024 * 1024;
-static char g_bufMsgHeader[MAX_MSG_HEADER_BUFFER_SIZE];
 
-static const int MAX_MSG_BODY_BUFFER_SIZE = 1024 * 1024;
-static char g_bufMsgBody[MAX_MSG_BODY_BUFFER_SIZE];
+static const int MAX_MSG_BUFFER_SIZE = 1024 * 1024;
+static char g_bufMsgBuffer[MAX_MSG_BUFFER_SIZE];
 
-int buildMessageHeader(const char* topic, int maxPartition, int msgBodySize)
+int buildMessageBuffer(const char* topic, int maxPartition, int msgBodySize)
 {
 	static unsigned int opaque = 0;
 	static unsigned int partition = 0;
+	static char bufHeader[1024];
 
-	int len = sprintf(g_bufMsgHeader, "put %s %u %d %d %u\r\n"
+	int len = sprintf(bufHeader, "put %s %u %d %d %u\r\n"
 	                  , topic
 	                  , partition++ % maxPartition
 	                  , msgBodySize
 	                  , 0
 	                  , opaque++);
-	//printf("[%s][%d]\n", g_bufMsgHeader, len);
+	memcpy(g_bufMsgBuffer, bufHeader, len);
 
-	return len;
+	return len + msgBodySize;
 }
 
 void sendMessageAlways(int fd, const char* topic, int maxPartition, int msgBodySize, int concurrentCount)
 {
 	long long requestTimes = 0;
 	long long responseTimes = 0;
+
 SENDMESSAGEALWAYS_AGAIN:
-	int msgHeaderLength = buildMessageHeader(topic, maxPartition, msgBodySize);
-	int writeHeaderLength = 0;
-	int writeBodyLength = 0;
+	int msgLength = buildMessageBuffer(topic, maxPartition, msgBodySize);
+	int writeMsgLength = 0;
 
 	requestTimes++;
-
 
 SENDMESSAGEALWAYS_SELECT:
 	bool selectWrite = (requestTimes - responseTimes) <= concurrentCount;
@@ -309,10 +308,10 @@ SENDMESSAGEALWAYS_SELECT:
 		// write
 		if((socketState & 2) == 2) {
 SENDMESSAGEALWAYS_WRITE:
-			if(writeHeaderLength < msgHeaderLength) {
-				int len = write(fd, g_bufMsgHeader + writeHeaderLength, msgHeaderLength - writeHeaderLength);
+			if(writeMsgLength < msgLength) {
+				int len = write(fd, g_bufMsgBuffer + writeMsgLength, msgLength - writeMsgLength);
 				if(len > 0) {
-					writeHeaderLength += len;
+					writeMsgLength += len;
 					goto SENDMESSAGEALWAYS_WRITE;
 				} else if(len == 0) {
 					goto SENDMESSAGEALWAYS_SELECT;
@@ -320,18 +319,7 @@ SENDMESSAGEALWAYS_WRITE:
 					printf("write error\n");
 					return;
 				}
-			} else if(writeBodyLength < msgBodySize) {
-				int len = write(fd, g_bufMsgBody + writeBodyLength, msgBodySize - writeBodyLength);
-				if(len > 0) {
-					writeBodyLength += len;
-					goto SENDMESSAGEALWAYS_WRITE;
-				} else if(len == 0) {
-					goto SENDMESSAGEALWAYS_SELECT;
-				}  else if(len == -1) {
-					printf("write error\n");
-					return;
-				}
-			} else {
+			}  else {
 				goto SENDMESSAGEALWAYS_AGAIN;
 			}
 
@@ -351,13 +339,15 @@ int main(int argc, char** argv)
 		return -1;
 	}
 
+	signal(SIGPIPE, SIG_IGN);
+
 	std::string serverUrl = argv[1];
 	std::string topic = argv[2];
 	int maxPartition = atoi(argv[3]);
 	int msgBodySize = atoi(argv[4]);
 	int concurrentCount = atoi(argv[5]);
 
-	memset(g_bufMsgBody, 'H', MAX_MSG_BODY_BUFFER_SIZE);
+	memset(g_bufMsgBuffer, 'H', MAX_MSG_BUFFER_SIZE);
 
 	while(true) {
 		int fd = SimpleUtil::ConnectRemoteHost(serverUrl.c_str());
