@@ -253,6 +253,25 @@ namespace SimpleUtil
 
 static const int MAX_MSG_BUFFER_SIZE = 1024 * 1024;
 static char g_bufMsgBuffer[MAX_MSG_BUFFER_SIZE];
+std::string GetTimeNow()
+{
+	std::string strResult;
+	char bufTemp[2][32] = {{0}, {0}};
+	struct timeval tv = {0};
+	struct timezone tz = {0};
+
+	gettimeofday(&tv, &tz);
+
+	// 10位定长
+	sprintf(bufTemp[0], "%d", (int)tv.tv_sec);
+	// 3位定长
+	sprintf(bufTemp[1], "%03d", (int)tv.tv_usec / 1000);
+
+	strResult = bufTemp[0];
+	strResult += bufTemp[1];
+
+	return strResult;
+}
 
 int buildMessageBuffer(const char* topic, int maxPartition, int msgBodySize)
 {
@@ -260,13 +279,21 @@ int buildMessageBuffer(const char* topic, int maxPartition, int msgBodySize)
 	static unsigned int partition = 0;
 	static char bufHeader[1024];
 
+	std::string attr = GetTimeNow();
+	int attrLen = attr.length();
+	int attrLenNet = htonl(attrLen);
+	msgBodySize += 4 + attrLen;
+
 	int len = sprintf(bufHeader, "put %s %u %d %d %u\r\n"
 	                  , topic
 	                  , partition++ % maxPartition
 	                  , msgBodySize
-	                  , 0
+	                  , 1
 	                  , opaque++);
 	memcpy(g_bufMsgBuffer, bufHeader, len);
+
+	memcpy(g_bufMsgBuffer + len, &attrLenNet, sizeof(attrLenNet));
+	memcpy(g_bufMsgBuffer + len + sizeof(attrLenNet), attr.c_str(), attrLen);
 
 	return len + msgBodySize;
 }
@@ -347,7 +374,7 @@ int main(int argc, char** argv)
 	int msgBodySize = atoi(argv[4]);
 	int concurrentCount = atoi(argv[5]);
 
-	memset(g_bufMsgBuffer, 'H', MAX_MSG_BUFFER_SIZE);
+	memset(g_bufMsgBuffer, '1', MAX_MSG_BUFFER_SIZE);
 
 	while(true) {
 		int fd = SimpleUtil::ConnectRemoteHost(serverUrl.c_str());
