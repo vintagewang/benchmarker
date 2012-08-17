@@ -379,14 +379,15 @@ int main(int argc, char** argv)
 	while(true) {
 		int fd = SimpleUtil::ConnectRemoteHost(serverUrl.c_str());
 		if(-1 == fd) {
-			printf("ConnectRemoteHost failed\n");
+			printf("ConnectRemoteHost %s failed\n", serverUrl.c_str());
+		} else {
+			sendMessageAlways(fd, topic.c_str(), maxPartition, msgBodySize, concurrentCount);
+
+			printf("sendMessageAlways over\n");
+
+			SimpleUtil::CloseSocket(fd);
 		}
 
-		sendMessageAlways(fd, topic.c_str(), maxPartition, msgBodySize, concurrentCount);
-
-		printf("sendMessageAlways over\n");
-
-		SimpleUtil::CloseSocket(fd);
 		sleep(3);
 	}
 	return 0;
