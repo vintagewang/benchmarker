@@ -3,9 +3,9 @@
 It's a benchmark test program.
 
 ## How to start?
-'curl https://nodeload.github.com/vintage-wang/benchmarker/zipball/master > a.zip
-unzip a.zip
-rm -f a.zip'
+'curl https://nodeload.github.com/vintage-wang/benchmarker/zipball/master > a.zip'
+'unzip a.zip'
+'rm -f a.zip'
 
 ## License
 
